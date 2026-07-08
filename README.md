@@ -1,30 +1,115 @@
-## Backend-First Project Roadmap
 
-- [ ] **Phase 1: Define the Core API Features**
-  - Write down what resources your backend will manage (e.g., Users, Posts, Items).
-  - List the main actions (e.g., "Create an account", "Log in", "Save an item", "Get a list of items").
+### 🗄️ Database Schemas 
+<img width="783" height="519" alt="image" src="https://github.com/user-attachments/assets/b7435905-b75b-409c-9649-46dad3be641c" />
 
-- [ ] **Phase 2: Design the Database Schema & Relations**
-  - Draw or map out your database tables/collections.
-  - Define the fields for each table (e.g., User: id, email, password_hash).
-  - Establish relationships (e.g., One User has many Items).
 
-- [ ] **Phase 3: Route Architecture (API Contract)**
-  - Map out your API endpoints, HTTP methods, and expected JSON data.
-  - *Example:* `POST /api/auth/register` (To create a user)
-  - *Example:* `GET /api/items` (To fetch data)
+**1. Menu Service Database (SQLite/PostgreSQL)**
 
-- [ ] **Phase 4: Pick the Tech Stack**
-  - Choose a runtime/language (e.g., Node.js, Python, Go).
-  - Choose a framework (e.g., Express, Fastify, FastAPI).
-  - Choose a database (e.g., PostgreSQL, MongoDB) and an ORM/ODM (like Prisma or Mongoose).
+* **`items`**
+* `id` (uuid) - Primary Key
+* `name` (varchar) - e.g., "Cheeseburger"
+* `description` (varchar)
+* `price` (int) - Stored in cents/rupiah
+* `is_available` (boolean)
+* `created_at` (timestamp)
+* `updated_at` (timestamp)
 
-- [ ] **Phase 5: Coding Milestones (Backend)**
-  - Milestone 1: Set up the server and create a simple "Health Check" endpoint (`GET /`).
-  - Milestone 2: Connect the database and successfully run a database migration or connection script.
-  - Milestone 3: Build and test the POST endpoints using Postman/Bruno to insert data.
-  - Milestone 4: Build and test GET endpoints to retrieve that data.
 
-- [ ] **Phase 6: The Fullstack Transition (Future)**
-  - Build the frontend UI.
-  - Use `fetch` or `axios` to connect your UI components to the API endpoints built in Phase 5.
+
+**2. Order Service Database (SQLite)**
+
+* **`orders`**
+* `id` (uuid) - Primary Key
+* `email` (varchar) - Guest identifier
+* `table_number` (varchar)
+* `total_amount` (int)
+* `status` (varchar) - PENDING, PREPARING, READY, COMPLETED, REFUNDED
+* `created_at` (timestamp)
+* `updated_at` (timestamp)
+
+
+* **`order_items`**
+* `id` (uuid) - Primary Key
+* `order_id` (uuid) - Foreign Key to orders
+* `item_id` (uuid) - References Menu Service item
+* `quantity` (int)
+* `price_at_purchase` (int) - Locks in the price
+
+
+
+**3. Payment Service Database (SQLite)**
+
+* **`payments`**
+* `id` (uuid) - Primary Key
+* `order_id` (uuid) - References Order Service ID
+* `stripe_payment_intent` (varchar)
+* `amount` (int)
+* `status` (varchar) - PENDING, SUCCESS, FAILED, REFUNDED
+* `created_at` (timestamp)
+
+
+
+**4. Notification Service Database (SQLite - Optional Log)**
+
+* **`notification_logs`**
+* `id` (uuid) - Primary Key
+* `order_id` (uuid)
+* `recipient_email` (varchar)
+* `email_type` (varchar) - RECEIPT, FOOD_READY, REFUND
+* `sent_at` (timestamp)
+
+
+
+---
+
+### 🔌 API Services (Elysia Endpoints)
+
+**Menu Service**
+
+* `GET /items` - Get all available food items (for customer menu)
+* `GET /items/:id` - Get specific item details
+* `POST /items` - Admin: Create new food item
+* `PUT /items/:id` - Admin: Update price or availability
+* `DELETE /items/:id` - Admin: Delete item
+
+**Order Service (The Orchestrator)**
+
+* `POST /orders` - Customer: Submit new order (Publishes `order.created` to RabbitMQ)
+* `GET /orders/:id` - Customer: Check order status
+* `GET /orders/table/:tableNumber` - Check all active orders for a specific table
+* `PUT /orders/:id/status` - Kitchen: Update status to PREPARING or READY
+* `POST /orders/:id/refund` - Admin: Trigger a refund (Publishes `refund.requested` to RabbitMQ)
+
+**Payment Service (Stripe Worker)**
+
+* `POST /webhook/stripe` - Stripe pings this to confirm payment success/failure
+* *(RabbitMQ)* Listens for `order.created` ➔ Creates Stripe Session
+* *(RabbitMQ)* Listens for `refund.requested` ➔ Processes Stripe Refund
+
+**Notification Service (Email Worker)**
+
+* `GET /health` - Simple check to ensure worker is alive
+* *(RabbitMQ)* Listens for `payment.success` ➔ Sends Receipt Email
+* *(RabbitMQ)* Listens for `order.ready` ➔ Sends "Food is Ready!" Email
+* *(RabbitMQ)* Listens for `refund.success` ➔ Sends Refund Confirmation Email
+
+---
+
+### 🏗️ Monorepo Project Setup
+
+```text
+resto-ordering-app/
+├── .env
+├── .env.example
+├── .gitignore
+├── docker-compose.yml       (Runs RabbitMQ)
+├── ecosystem.config.js      (PM2 for all Bun services)
+├── package.json
+├── README.md
+│
+└── services/
+    ├── menu-service/
+    ├── order-service/
+    ├── payment-service/
+    └── notification-service/
+
