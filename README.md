@@ -1,22 +1,28 @@
+### Database Schema 
 
-### 🗄️ Database Schemas 
-<img width="783" height="519" alt="image" src="https://github.com/user-attachments/assets/b7435905-b75b-409c-9649-46dad3be641c" />
+<img width="1252" height="770" alt="image" src="https://github.com/user-attachments/assets/dc668f35-fc97-48ca-ac67-6a4a1676235d" />
 
+**1. Menu Service Database**
 
-**1. Menu Service Database (SQLite/PostgreSQL)**
+* **`categories`**
+* `id` (uuid) - Primary Key
+* `name` (varchar) - e.g., "Mains", "Drinks"
+* `description` (varchar)
+* `created_at` (timestamp)
+
 
 * **`items`**
 * `id` (uuid) - Primary Key
+* `category_id` (uuid) - Foreign Key to `categories.id`
 * `name` (varchar) - e.g., "Cheeseburger"
 * `description` (varchar)
 * `price` (int) - Stored in cents/rupiah
 * `is_available` (boolean)
 * `created_at` (timestamp)
-* `updated_at` (timestamp)
 
 
 
-**2. Order Service Database (SQLite)**
+**2. Order Service Database (The Orchestrator)**
 
 * **`orders`**
 * `id` (uuid) - Primary Key
@@ -25,23 +31,22 @@
 * `total_amount` (int)
 * `status` (varchar) - PENDING, PREPARING, READY, COMPLETED, REFUNDED
 * `created_at` (timestamp)
-* `updated_at` (timestamp)
 
 
 * **`order_items`**
 * `id` (uuid) - Primary Key
-* `order_id` (uuid) - Foreign Key to orders
-* `item_id` (uuid) - References Menu Service item
+* `order_id` (uuid) - Foreign Key to `orders.id`
+* `item_id` (uuid) - **Soft Link:** References the Menu Service's `items.id`
 * `quantity` (int)
-* `price_at_purchase` (int) - Locks in the price
+* `price_at_purchase` (int) - Crucial for financial history if menu prices change later.
 
 
 
-**3. Payment Service Database (SQLite)**
+**3. Payment Service Database (Stripe)**
 
 * **`payments`**
 * `id` (uuid) - Primary Key
-* `order_id` (uuid) - References Order Service ID
+* `order_id` (uuid) - **Soft Link:** References Order Service's `orders.id`
 * `stripe_payment_intent` (varchar)
 * `amount` (int)
 * `status` (varchar) - PENDING, SUCCESS, FAILED, REFUNDED
@@ -49,67 +54,152 @@
 
 
 
-**4. Notification Service Database (SQLite - Optional Log)**
+**4. Notification Service Database**
 
 * **`notification_logs`**
 * `id` (uuid) - Primary Key
-* `order_id` (uuid)
+* `order_id` (uuid) - **Soft Link:** References Order Service's `orders.id`
 * `recipient_email` (varchar)
 * `email_type` (varchar) - RECEIPT, FOOD_READY, REFUND
+* `status` (varchar) - SENT, FAILED
 * `sent_at` (timestamp)
 
+## API END POINTS
+###  1. Menu Service (Port 3000)
 
+**Categories API**
+
+* `GET /api/categories`
+* **Response:** `[{ id, name, description }]`
+
+
+* `POST /api/categories` *(Admin)*
+* **Body:** `{ name, description }`
+**Items API**
+
+* `GET /api/items` (Supports query: `?category_id=uuid`)
+* **Response:** `[{ id, category_id, name, price, is_available }]`
+
+
+* `GET /api/items/:id`
+* **Response:** Single item details.
+
+
+* `POST /api/items` *(Admin)*
+* **Body:** `{ category_id, name, description, price, is_available }`
+
+
+* `PUT /api/items/:id` *(Admin)*
+* **Body:** `{ price, is_available }`
+---
+
+### 2. Order Service (Port 3001)
+**HTTP APIs (Frontend)**
+
+* `POST /api/orders` *(Customer Checkout)*
+* **Body:** `{ email, table_number, items: [{ id, quantity }] }`
+* **Action:** Calculates total, saves as `PENDING_PAYMENT`.
+* **Publishes Event:**  `order.created` (Payload: orderId, amount, email)
+
+
+* `GET /api/orders/:id` *(Customer Polling)*
+* **Response:** `{ id, status, total_amount, items: [...] }`
+
+
+* `PUT /api/orders/:id/status` *(Kitchen Tablet)*
+* **Body:** `{ status: "PREPARING" | "READY" }`
+* **Publishes Event:**  `order.status_updated` (If status is "READY")
+
+* `POST /api/orders/:id/refund` *(Admin Dashboard)*
+* **Action:** Updates status to `REFUND_REQUESTED`.
+* **Publishes Event:**  `refund.requested` (Payload: orderId)
+
+**RabbitMQ Listeners (Internal)**
+
+* 🎧 Consumes `payment.success` ➔ Updates order status from `PENDING_PAYMENT` to `PREPARING`.
+* 🎧 Consumes `payment.failed` ➔ Updates order status to `CANCELED`.
 
 ---
 
-### 🔌 API Services (Elysia Endpoints)
+### 3. Payment Service (Port 3002)
 
-**Menu Service**
+**HTTP APIs (External)**
 
-* `GET /items` - Get all available food items (for customer menu)
-* `GET /items/:id` - Get specific item details
-* `POST /items` - Admin: Create new food item
-* `PUT /items/:id` - Admin: Update price or availability
-* `DELETE /items/:id` - Admin: Delete item
+* `POST /api/webhook/stripe`
+* **Action:** Stripe pings this URL securely to say a credit card charge succeeded.
+* **Publishes Event:**  `payment.success` (Payload: orderId)
 
-**Order Service (The Orchestrator)**
+**RabbitMQ Listeners (Internal)**
 
-* `POST /orders` - Customer: Submit new order (Publishes `order.created` to RabbitMQ)
-* `GET /orders/:id` - Customer: Check order status
-* `GET /orders/table/:tableNumber` - Check all active orders for a specific table
-* `PUT /orders/:id/status` - Kitchen: Update status to PREPARING or READY
-* `POST /orders/:id/refund` - Admin: Trigger a refund (Publishes `refund.requested` to RabbitMQ)
+###  4. Notification Service (Port 3003)
 
-**Payment Service (Stripe Worker)**
+**HTTP APIs**
 
-* `POST /webhook/stripe` - Stripe pings this to confirm payment success/failure
-* *(RabbitMQ)* Listens for `order.created` ➔ Creates Stripe Session
-* *(RabbitMQ)* Listens for `refund.requested` ➔ Processes Stripe Refund
+* `GET /health` ➔ Returns `200 OK` (Just so PM2/Docker knows the worker hasn't crashed).
 
-**Notification Service (Email Worker)**
+**RabbitMQ Listeners (Internal)**
 
-* `GET /health` - Simple check to ensure worker is alive
-* *(RabbitMQ)* Listens for `payment.success` ➔ Sends Receipt Email
-* *(RabbitMQ)* Listens for `order.ready` ➔ Sends "Food is Ready!" Email
-* *(RabbitMQ)* Listens for `refund.success` ➔ Sends Refund Confirmation Email
+* 🎧 Consumes `payment.success` ➔ Sends **"Receipt & Order Confirmed"** email to the customer.
+* 🎧 Consumes `order.status_updated` (when "READY") ➔ Sends **"Your food is arriving at your table!"** email.
+* 🎧 Consumes `refund.success` ➔ Sends **"Your money has been refunded"** email.
 
----
-
-### 🏗️ Monorepo Project Setup
-
-```text
-resto-ordering-app/
-├── .env
-├── .env.example
-├── .gitignore
-├── docker-compose.yml       (Runs RabbitMQ)
-├── ecosystem.config.js      (PM2 for all Bun services)
-├── package.json
-├── README.md
-│
-└── services/
+### Project Setup
+    firstbite/
+    ├── .env
+    ├── docker-compose.yml
+    ├── ecosystem.config.js
+    ├── package.json
+    └── services/
     ├── menu-service/
+    │   ├── src/
+    │   │   ├── db/
+    │   │   │   ├── client.ts
+    │   │   │   └── schema.ts
+    │   │   ├── middleware/
+    │   │   │   ├── auth.middleware.ts
+    │   │   │   └── error.middleware.ts
+    │   │   ├── routes/
+    │   │   │   └── menu.route.ts
+    │   │   ├── services/
+    │   │   │   └── menu.service.ts
+    │   │   └── index.ts
+    │   ├── drizzle.config.ts
+    │   └── package.json
     ├── order-service/
+    │   ├── src/
+    │   │   ├── db/
+    │   │   │   ├── client.ts
+    │   │   │   └── schema.ts
+    │   │   ├── middleware/
+    │   │   │   ├── auth.middleware.ts
+    │   │   │   └── error.middleware.ts
+    │   │   ├── routes/
+    │   │   │   └── order.route.ts
+    │   │   ├── services/
+    │   │   │   └── order.service.ts
+    │   │   ├── index.ts
+    │   │   └── queue.ts
+    │   ├── drizzle.config.ts
+    │   └── package.json
     ├── payment-service/
+    │   ├── src/
+    │   │   ├── db/
+    │   │   │   ├── client.ts
+    │   │   │   └── schema.ts
+    │   │   ├── middleware/
+    │   │   │   └── error.middleware.ts
+    │   │   ├── routes/
+    │   │   │   └── webhook.route.ts
+    │   │   ├── index.ts
+    │   │   └── queue.ts
+    │   ├── drizzle.config.ts
+    │   └── package.json
     └── notification-service/
-
+        ├── src/
+        │   ├── db/
+        │   │   ├── client.ts
+        │   │   └── schema.ts
+        │   ├── index.ts
+        │   └── queue.ts
+        ├── drizzle.config.ts
+        └── package.json
