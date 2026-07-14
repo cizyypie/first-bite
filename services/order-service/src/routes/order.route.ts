@@ -8,6 +8,35 @@ const orderService = new OrderService();
 export const orderRoutes = new Elysia({ prefix: "/api/orders" })
   .use(jwt({ name: "jwt", secret: process.env.JWT_SECRET! }))
   .derive(optionalAuth)
+  // Admin: get all orders
+  .get("/", async () => {
+    return await orderService.getAllOrders();
+  })
+
+  // Admin: get single order with items
+  .get("/:id", async ({ params, set }) => {
+    try {
+      return await orderService.getOrderById(params.id);
+    } catch (error: any) {
+      set.status = 404;
+      return { error: "Order not found" };
+    }
+  })
+
+  // Admin: update order status
+  .patch("/:id/status", async ({ params, body, set }) => {
+    try {
+      return await orderService.updateOrderStatus(params.id, body.status);
+    } catch (error: any) {
+      set.status = 404;
+      return { error: "Order not found" };
+    }
+  }, {
+    body: t.Object({
+      status: t.String()
+    })
+  })
+
   .post(
     "/",
     async ({ body, user, set }: any) => {
@@ -35,3 +64,4 @@ export const orderRoutes = new Elysia({ prefix: "/api/orders" })
       }),
     },
   );
+
