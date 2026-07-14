@@ -4,13 +4,16 @@ import Stripe from "stripe";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 let amqpChannel: amqp.Channel;
 
-export const startPaymentWorker = async () => {
+// 1. Initialize connection and listeners
+export const startQueue = async () => {
     const connection = await amqp.connect(process.env.RABBITMQ_URL!);
     amqpChannel = await connection.createChannel();
     
     await amqpChannel.assertQueue("order_created", { durable: true });
-    await amqpChannel.assertQueue("payment_success", { durable: true }); // New queue
-    console.log(" listening for orders...");
+    await amqpChannel.assertQueue("payment_success", { durable: true });
+    await amqpChannel.assertQueue("email_notifications", { durable: true }); 
+
+    console.log("Payment Service connected to RabbitMQ & listening for orders...");
 
     amqpChannel.consume("order_created", async (msg) => {
         if (msg !== null) {
@@ -22,7 +25,7 @@ export const startPaymentWorker = async () => {
                         price_data: {
                             currency: "usd",
                             product_data: { name: `Order for ${orderData.customerName}` },
-                            unit_amount: orderData.totalAmount * 100,
+                            unit_amount: Math.round(orderData.totalAmount * 100), // Stripe requires integers
                         },
                         quantity: 1,
                     }],
@@ -36,7 +39,7 @@ export const startPaymentWorker = async () => {
                     }
                 });
 
-                console.log(`Stripe URL for ${orderData.customerName}: ${session.url}`);
+                console.log(`Stripe Checkout URL for ${orderData.customerName}: ${session.url}`);
                 amqpChannel.ack(msg);
             } catch (error) {
                 console.error("Stripe Session Creation Error:", error);
@@ -45,41 +48,14 @@ export const startPaymentWorker = async () => {
     });
 };
 
-// Process incoming Stripe events securely
-export const handleStripeWebhook = async (rawBody: string, signature: string) => {
-    let event: Stripe.Event;
-
-    try {
-        event = stripe.webhooks.constructEvent(
-            rawBody,
-            signature,
-            process.env.STRIPE_WEBHOOK_SECRET!
-        );
-    } catch (err: any) {
-        console.error(`Webhook signature verification failed: ${err.message}`);
-        return { success: false, message: err.message };
+export const publishToQueue = async (queueName: string, data: any) => {
+    if (!amqpChannel) {
+        throw new Error("RabbitMQ channel is not initialized");
     }
-
-    if (event.type === "checkout.session.completed") {
-        const session = event.data.object as Stripe.Checkout.Session;
-        
-        const paymentDetails = {
-            orderId: session.metadata?.orderId,
-            customerName: session.metadata?.customerName,
-            email: session.metadata?.email,
-            amountPaid: session.amount_total ? session.amount_total / 100 : 0,
-            stripePaymentIntent: session.payment_intent as string
-        };
-
-        console.log(`📢 Payment success verified for Order: ${paymentDetails.orderId}`);
-
-        // Broadcast success message to RabbitMQ
-        amqpChannel.sendToQueue(
-            "payment_success",
-            Buffer.from(JSON.stringify(paymentDetails)),
-            { persistent: true }
-        );
-    }
-
-    return { success: true };
+    
+    amqpChannel.sendToQueue(
+        queueName, 
+        Buffer.from(JSON.stringify(data)), 
+        { persistent: true }
+    );
 };

@@ -11,7 +11,7 @@ module.exports = {
       watch: true,
       env: {
         PORT: 3001,
-        RABBITMQ_URL: "amqp://admin:password123@localhost:5672"
+        RABBITMQ_URL:  RABBITMQ_URL
       }
     },
     {
@@ -22,8 +22,8 @@ module.exports = {
       watch: true,
       env: {
         PORT: 3002,
-        RABBITMQ_URL: "amqp://admin:password123@localhost:5672",
-        STRIPE_SECRET_KEY: "sk_test_your_key_here"
+        RABBITMQ_URL: RABBITMQ_URL,
+        STRIPE_SECRET_KEY: STRIPE_SECRET_KEY
       }
     },
     {
@@ -33,7 +33,7 @@ module.exports = {
       cwd: "./services/notification-service",
       watch: true,
       env: {
-        RABBITMQ_URL: "amqp://admin:password123@localhost:5672"
+        RABBITMQ_URL: RABBITMQ_URL
       }
     }
   ]
