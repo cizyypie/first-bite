@@ -1,6 +1,7 @@
 import { db } from "../db/client";
 import { eq } from "drizzle-orm";
 import { users } from "../db/schema";
+
 export class UserService {
   async register(data: any) {
     // 1. Hash the password natively with Bun
