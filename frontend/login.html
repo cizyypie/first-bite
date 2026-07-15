@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>First Bite - Login</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="index.html" class="nav-brand">First Bite</a>
+      <div class="nav-links">
+        <a href="index.html">Menu</a>
+        <a href="cart.html" class="cart-link">Cart <span id="cart-badge">0</span></a>
+        <a href="admin.html" id="admin-link" style="display:none;">Admin</a>
+        <a href="login.html" id="login-link">Login</a>
+        <a href="#" id="logout-link" style="display:none;" onclick="logout()">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <h1>Account</h1>
+
+    <div class="auth-container">
+      <!-- Login -->
+      <div class="form-card">
+        <h2>Login</h2>
+        <form onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required>
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" required>
+          </div>
+          <button type="submit" class="btn-primary">Login</button>
+          <p id="login-error" class="error"></p>
+        </form>
+      </div>
+
+      <!-- Register -->
+      <div class="form-card">
+        <h2>Register</h2>
+        <form onsubmit="handleRegister(event)">
+          <div class="form-group">
+            <label for="register-email">Email</label>
+            <input type="email" id="register-email" required>
+          </div>
+          <div class="form-group">
+            <label for="register-password">Password (min 6 chars)</label>
+            <input type="password" id="register-password" minlength="6" required>
+          </div>
+          <button type="submit" class="btn-primary">Register</button>
+          <p id="register-error" class="error"></p>
+          <p id="register-success" class="success"></p>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/cart.js"></script>
+  <script>
+    updateAuthUI();
+    updateCartBadge();
+  </script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>First Bite - Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="index.html" class="nav-brand">First Bite</a>
+      <div class="nav-links">
+        <a href="index.html">Menu</a>
+        <a href="cart.html" class="cart-link">Cart <span id="cart-badge">0</span></a>
+        <a href="admin.html" id="admin-link" style="display:none;">Admin</a>
+        <a href="login.html" id="login-link">Login</a>
+        <a href="#" id="logout-link" style="display:none;" onclick="logout()">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <h1>Admin Dashboard</h1>
+
+    <div id="admin-unauthorized" style="display:none;">
+      <p>You must be logged in as an admin to view this page.</p>
+      <a href="login.html" class="btn-primary">Go to Login</a>
+    </div>
+
+    <div id="admin-content" style="display:none;">
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="orders" onclick="showTab('orders')">Orders</button>
+        <button class="tab-btn" data-tab="menu" onclick="showTab('menu')">Menu</button>
+      </div>
+
+      <!-- Orders Tab -->
+      <div id="tab-orders" class="tab-content" style="display:block;">
+        <h2>Incoming Orders</h2>
+        <div id="orders-list"><p>Loading...</p></div>
+      </div>
+
+      <!-- Menu Tab -->
+      <div id="tab-menu" class="tab-content">
+        <h2>Menu Management</h2>
+
+        <!-- Forms for adding categories and items -->
+        <div class="admin-forms">
+          <div class="form-card">
+            <h3>Add Category</h3>
+            <form onsubmit="handleAddCategory(event)">
+              <div class="form-group">
+                <label for="cat-name">Name</label>
+                <input type="text" id="cat-name" required>
+              </div>
+              <div class="form-group">
+                <label for="cat-desc">Description</label>
+                <input type="text" id="cat-desc">
+              </div>
+              <button type="submit" class="btn-primary">Add Category</button>
+              <p id="cat-error" class="error"></p>
+            </form>
+          </div>
+
+          <div class="form-card">
+            <h3>Add Item</h3>
+            <form onsubmit="handleAddItem(event)">
+              <div class="form-group">
+                <label for="item-category">Category</label>
+                <select id="item-category" required></select>
+              </div>
+              <div class="form-group">
+                <label for="item-name">Name</label>
+                <input type="text" id="item-name" required>
+              </div>
+              <div class="form-group">
+                <label for="item-desc">Description</label>
+                <input type="text" id="item-desc">
+              </div>
+              <div class="form-group">
+                <label for="item-price">Price (in smallest unit, e.g. 15000)</label>
+                <input type="number" id="item-price" required>
+              </div>
+              <button type="submit" class="btn-primary">Add Item</button>
+              <p id="item-error" class="error"></p>
+            </form>
+          </div>
+        </div>
+
+        <div id="admin-menu-list"><p>Loading...</p></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/cart.js"></script>
+  <script src="js/admin.js"></script>
+  <script>
+    updateAuthUI();
+    updateCartBadge();
+
+    // Guard: only admins can access
+    if (!isAdmin()) {
+      document.getElementById('admin-unauthorized').style.display = 'block';
+    } else {
+      document.getElementById('admin-content').style.display = 'block';
+      loadOrders();
+    }
+  </script>
+</body>
+</html>
