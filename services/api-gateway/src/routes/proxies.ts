@@ -18,8 +18,16 @@ export const publicRoutes = new Elysia()
   .post('/api/orders', ({ request }) => proxyHelper(services.orders, request))
   .post('/api/orders/*', ({ request }) => proxyHelper(services.orders, request))
 
+  // Payment — create checkout session (customers need this to pay)
+  .post('/api/payments/checkout', ({ request }) => proxyHelper(services.payments, request))
+
+  // Payment — verify payment after Stripe redirect
+  .get('/api/payments/verify', ({ request }) => proxyHelper(services.payments, request))
+
   // Stripe Webhooks (called by Stripe, must be public)
-  .all('/api/webhook/stripe', ({ request }) => proxyHelper(services.payments, request));
+  .post('/api/webhook/stripe', ({ request }) => proxyHelper(services.payments, request), {
+    parse: [] // Disable body parsing to preserve raw bytes for Stripe signature verification
+  });
 
 // Admin routes — requires valid JWT with ADMIN role
 export const adminRoutes = new Elysia()
