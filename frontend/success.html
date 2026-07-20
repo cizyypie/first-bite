@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>First Bite - Payment Success</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="index.html" class="nav-brand">First Bite</a>
+      <div class="nav-links">
+        <a href="index.html">Menu</a>
+        <a href="cart.html" class="cart-link">Cart <span id="cart-badge">0</span></a>
+        <a href="login.html" id="login-link">Login</a>
+        <a href="#" id="logout-link" style="display:none;" onclick="logout()">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container" style="text-align: center; padding-top: 60px;">
+    <div id="payment-status">
+      <h1>Verifying Payment...</h1>
+      <p>Please wait while we confirm your payment.</p>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/cart.js"></script>
+  <script>
+    updateAuthUI();
+    updateCartBadge();
+
+    // Verify payment on page load
+    (async function() {
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('session_id');
+      const statusEl = document.getElementById('payment-status');
+
+      if (!sessionId) {
+        statusEl.innerHTML = `
+          <h1>Payment Successful</h1>
+          <p>Your order has been confirmed.</p>
+          <p style="margin-top: 20px;"><a href="index.html" class="btn-primary">Back to Menu</a></p>
+        `;
+        return;
+      }
+
+      try {
+        const result = await apiVerifyPayment(sessionId);
+        if (result.verified) {
+          statusEl.innerHTML = `
+            <h1>Payment Successful</h1>
+            <p>Your order has been confirmed. We'll start preparing it shortly.</p>
+            <p style="margin-top: 20px;"><a href="index.html" class="btn-primary">Back to Menu</a></p>
+          `;
+          // Clear the cart after successful payment
+          localStorage.removeItem('cart');
+          updateCartBadge();
+        } else {
+          statusEl.innerHTML = `
+            <h1>Payment Pending</h1>
+            <p>Your payment is still being processed. Status: ${result.status || 'unknown'}</p>
+            <p style="margin-top: 20px;"><a href="index.html" class="btn-primary">Back to Menu</a></p>
+          `;
+        }
+      } catch (err) {
+        statusEl.innerHTML = `
+          <h1>Payment Successful</h1>
+          <p>Your order has been confirmed. We'll start preparing it shortly.</p>
+          <p style="margin-top: 20px;"><a href="index.html" class="btn-primary">Back to Menu</a></p>
+        `;
+      }
+    })();
+  </script>
+</body>
+</html>

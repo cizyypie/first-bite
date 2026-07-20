@@ -1,4 +1,3 @@
-
 async function apiRegister(email, password) {
   const res = await fetch(`${API_URL}/api/users/register`, {
     method: 'POST',
@@ -128,6 +127,23 @@ async function apiUpdateOrderStatus(id, status) {
   return res.json();
 }
 
+// payment
+async function apiCreateCheckout(data) {
+  const res = await fetch(`${API_URL}/api/payments/checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+   if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Server Error: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+
 // --- Helpers ---
 
 function authHeaders() {
@@ -135,4 +151,11 @@ function authHeaders() {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${getToken()}`,
   };
+}
+
+// --- Payment Verification ---
+
+async function apiVerifyPayment(sessionId) {
+  const res = await fetch(`${API_URL}/api/payments/verify?session_id=${sessionId}`);
+  return res.json();
 }

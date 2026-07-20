@@ -86,12 +86,24 @@ async function handleCheckout(e) {
   errorEl.textContent = '';
   const data = await apiCreateOrder(orderData);
 
+
   if (data.id) {
-    clearCart();
-    successEl.textContent = 'Order placed! Your order ID: ' + data.id;
-    document.getElementById('checkout-form').style.display = 'none';
-    document.getElementById('cart-items').innerHTML = '';
+    const user = getUser();
+    const checkout = await apiCreateCheckout({
+      orderId: data.id,
+      amount: data.totalAmount,
+      customerName: orderData.customerName || user?.email?.split('@')[0] || 'Customer',
+      email: orderData.email || user?.email,
+    });
+
+    if (checkout.url) {
+      clearCart();
+      window.location.href = checkout.url; 
+    } else {
+      errorEl.textContent = 'Order created but payment setup failed.';
+    }
   } else {
     errorEl.textContent = data.error || 'Failed to place order.';
   }
+
 }
