@@ -1,4 +1,4 @@
-# First Bite
+# firstbite
 
 A restaurant ordering system built with a microservices architecture. Customers browse a menu, order as a guest or as a logged-in user, and pay through Stripe. Admins manage the menu and track incoming orders in real time.
 
@@ -15,34 +15,82 @@ A restaurant ordering system built with a microservices architecture. Customers 
 
 ## Architecture
 
-Everything goes through a single public entry point, the API Gateway. Downstream services are never called directly by the frontend.
+# firstbite — System Architecture
 
 ```
-Frontend
-   |
-   v
-API Gateway (:8000)  <-- only public-facing service
-   |
-   |--- users-service     (:3004)  register / login
-   |--- menu-service       (:3000)  categories & items
-   |--- order-service      (:3001)  orders, guest & logged-in
-   |--- payment-service    (:3002)  Stripe checkout + webhook
+                                +----------------------+
+                                |      Frontend        |
+                                | (static, port 5173)  |
+                                +----------+-----------+
+                                           |
+                                           | HTTP (REST)
+                                           v
+                                +----------------------+
+                                |     API Gateway      |
+                                |   (Elysia, :8000)    |
+                                |  routing + JWT auth  |
+                                +----------+-----------+
+                                           |
+        +------------------+--------------+--------------+------------------+
+        |                  |                             |                  |
+        v                  v                             v                  v
++---------------+  +----------------+           +------------------+  +------------------+
+| Users Service |  |  Menu Service  |           |  Order Service   |  | Payment Service  |
+|  (Elysia,     |  |  (Elysia,      |           |  (Elysia,        |  |  (Elysia,        |
+|   :3004)      |  |   :3000)       |           |   :3001)         |  |   :3002)         |
++-------+-------+  +--------+-------+           +---------+--------+  +---------+--------+
+        |                   |                             |                     |
+        v                   v                             v                     v
++---------------+  +----------------+           +------------------+  +------------------+
+| users_db      |  | menu_db        |           | orders_db        |  | payments_db      |
+| (Neon PG)     |  | (Neon PG)      |           | (Neon PG)        |  | (Neon PG)        |
++---------------+  +----------------+           +--------+---------+  +--------+---------+
+                                                          |                     |
+                                                          | order_created       | payment_success
+                                                          v                     v
+                                                 +-----------------------------------+
+                                                 |            RabbitMQ               |
+                                                 |     (Message Broker, :5672)       |
+                                                 |  queues: order_created,           |
+                                                 |  payment_success,                 |
+                                                 |  email_notifications              |
+                                                 +------------------+-----------------+
+                                                                    |
+                                                    +---------------+----------------+
+                                                    |                                |
+                                            payment_success                 email_notifications
+                                                    |                                |
+                                                    v                                v
+                                        (consumed by Order Service           +------------------+
+                                         to mark order as PAID)              | Notification     |
+                                                                             | Service (:3003)  |
+                                                                             +--------+---------+
+                                                                                      |
+                                                                                      v
+                                                                             +------------------+
+                                                                             |  SMTP / Email     |
+                                                                             |  (External)       |
+                                                                             +------------------+
 
-order-service --> RabbitMQ --> payment-service --> RabbitMQ --> notification-service
+        Payment Service also talks to an external payment provider:
+
+                                                 +------------------+
+                       Payment Service --------> |  Stripe API      |
+                       (checkout + webhook)      |  (External)      |
+                                                 +------------------+
 ```
 
-Each service owns its own database and its own concern. Services talk to each other asynchronously through RabbitMQ for anything event-driven (order placed, payment confirmed, email needed).
+## Notes
 
-## Services
-
-| Service | Responsibility | Port |
-|---|---|---|
-| `api-gateway` | Routes requests, enforces admin-only access | 8000 |
-| `users-service` | Registration, login, issues JWTs | 3004 |
-| `menu-service` | Menu categories and items (CRUD) | 3000 |
-| `order-service` | Order creation, status, guest/customer logic | 3001 |
-| `payment-service` | Stripe checkout sessions and webhook handling | 3002 |
-| `notification-service` | Sends order/payment emails | worker only |
+- **API Gateway** (`services/api-gateway`, port `8000`) is the single entry point for the frontend. It proxies requests to downstream services and enforces JWT auth for admin routes (`adminGuard`), while user auth/menu-read/order-create/checkout routes are public.
+- **Users Service** (`:3004`) — authentication and user management, own `users_db`.
+- **Menu Service** (`:3000`) — menu items and categories, own `menu_db`.
+- **Order Service** (`:3001`) — order creation and status, own `orders_db`. Publishes `order_created` and consumes `payment_success` to update order status.
+- **Payment Service** (`:3002`) — checkout sessions and Stripe webhooks, own `payments_db`. Publishes `payment_success` (for Order Service) and `email_notifications` (for Notification Service).
+- **Notification Service** (`:3003`) — consumes `email_notifications` from RabbitMQ and sends emails via SMTP. No database of its own.
+- **RabbitMQ** — async message broker decoupling Order, Payment, and Notification services (`docker-compose.yml`, port `5672`, management UI on `15672`).
+- **Databases** — each service owns its own Postgres database (Neon), following the database-per-service pattern. There is no shared schema/database.
+- **External integrations** — Stripe (payments) and SMTP provider (email), both called only from their owning services (Payment Service and Notification Service respectively).
 
 ## Features
 
@@ -130,23 +178,15 @@ docker-compose up -d
 Run database migrations for all services:
 
 ```bash
-npm run migrate
+bun run migrate
 ```
 
 Start all services:
 
 ```bash
-npm run start
+bun run start
 ```
 
-Useful PM2 commands:
-
-```bash
-npm run status    # check running services
-npm run logs      # tail logs
-npm run restart   # restart all services
-npm run stop      # stop all services
-```
 
 ## Auth Model
 
